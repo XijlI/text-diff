@@ -1,0 +1,1417 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Text Diff</title>
+<style>
+  :root{
+    color-scheme: light;
+    --bg:#f6f6f4; --card:#ffffff; --fg:#1f2328; --muted:#6a7280; --border:#e2e4e7;
+    --accent:#2563eb; --accent-fg:#ffffff; --soft:#eef0f3;
+    --del-bg:#fce0df; --del-fg:#a02a2e; --ins-bg:#d9f0e1; --ins-fg:#136139;
+  }
+  html[data-theme="dark"]{
+    color-scheme: dark;
+    --bg:#131519; --card:#1a1d22; --fg:#e6e9ed; --muted:#98a1ae; --border:#2a2f37;
+    --accent:#5b8cff; --accent-fg:#0a1020; --soft:#22272f;
+    --del-bg:#4a2024; --del-fg:#ffb1b4; --ins-bg:#173a29; --ins-fg:#8fdfb2;
+  }
+  *{box-sizing:border-box}
+  [hidden]{display:none !important}
+  body{
+    margin:0; background:var(--bg); color:var(--fg);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei UI","Microsoft YaHei",system-ui,sans-serif;
+    font-size:14px; line-height:1.6; -webkit-font-smoothing:antialiased;
+  }
+  button{font:inherit;color:inherit;background:transparent;border:1px solid var(--border);border-radius:7px;padding:5px 11px;cursor:pointer;transition:background .15s,border-color .15s,filter .15s}
+  button:hover{background:var(--soft)}
+  button:active{transform:translateY(.5px)}
+  button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-fg);font-weight:600}
+  button.primary:hover{filter:brightness(1.08);background:var(--accent)}
+  button.mini{padding:2px 8px;font-size:11.5px;border-radius:6px;color:var(--muted)}
+  button.mini:hover{color:var(--fg)}
+  #btnLang{min-width:44px;letter-spacing:.3px}
+  .icon-btn{width:28px;height:28px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:7px;color:var(--muted)}
+  .icon-btn:hover{color:var(--fg)}
+  .icon-btn svg{width:16px;height:16px;display:block}
+  button:disabled{opacity:.4;cursor:default}
+  .seg{display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--card)}
+  .seg button{border:0;border-radius:0;padding:5px 12px;color:var(--muted)}
+  .seg button+button{border-left:1px solid var(--border)}
+  .seg button.on{background:var(--soft);color:var(--fg);font-weight:600}
+
+  header{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 90%,transparent);backdrop-filter:blur(12px);border-bottom:1px solid var(--border)}
+  .wrap{max-width:1320px;margin:0 auto;padding:0 20px}
+  .row1{display:flex;align-items:center;gap:8px;height:52px}
+  .brand{font-weight:700;font-size:15px;letter-spacing:.2px}
+  .tag{font-size:10.5px;color:var(--muted);border:1px solid var(--border);padding:1px 7px;border-radius:999px;letter-spacing:.3px;white-space:nowrap}
+  .grow{flex:1}
+  .row2{display:flex;flex-wrap:wrap;align-items:center;gap:14px;padding:0 0 11px}
+  .row2 label{display:inline-flex;align-items:center;gap:6px;color:var(--muted);cursor:pointer;white-space:nowrap}
+  .row2 label:hover{color:var(--fg)}
+  .row2 input[type=checkbox]{accent-color:var(--accent);margin:0;width:14px;height:14px}
+  #btnCompare{margin-left:auto;white-space:nowrap}
+
+  main{padding-bottom:60px}
+  .editors{display:grid;grid-template-columns:1fr 46px 1fr;align-items:stretch;margin:16px 0 4px}
+  .swap-col{display:flex;align-items:center;justify-content:center}
+  .swap-col button{width:34px;height:34px;padding:0;border-radius:50%;background:var(--card);color:var(--muted);font-size:15px;font-weight:600;line-height:1;box-shadow:0 1px 3px rgba(0,0,0,.10)}
+  .swap-col button:hover{color:var(--accent);border-color:var(--accent);background:var(--card)}
+  @media (max-width:860px){
+    .editors{grid-template-columns:1fr}
+    .swap-col{padding:6px 0}
+    .swap-col button{transform:rotate(90deg)}
+  }
+  .pane{background:var(--card);border:1px solid var(--border);border-radius:10px;display:flex;flex-direction:column;overflow:hidden;transition:border-color .15s,box-shadow .15s}
+  .pane.drag{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent)}
+  .pane-head{display:flex;align-items:center;gap:8px;padding:6px 8px 6px 12px;border-bottom:1px solid var(--border);font-size:12px;color:var(--muted)}
+  .pane-head b{color:var(--fg);font-size:12px;font-weight:600;white-space:nowrap}
+  .pane-head .fname{max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--accent);direction:rtl;text-align:left}
+  .pane textarea{
+    flex:1;min-height:148px;max-height:42vh;border:0;outline:0;resize:vertical;background:transparent;color:var(--fg);
+    padding:10px 13px;font:inherit;font-size:13.5px;line-height:1.72;tab-size:2;
+  }
+  .pane textarea::placeholder{color:var(--muted);opacity:.75}
+
+  .stats{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;padding:10px 2px 12px;font-size:12.5px;color:var(--muted)}
+  .stats b{color:var(--fg);font-variant-numeric:tabular-nums;font-weight:600}
+  .stats .sep{width:1px;height:14px;background:var(--border)}
+  .add{color:var(--ins-fg)} .rem{color:var(--del-fg)}
+  .add b{color:var(--ins-fg)} .rem b{color:var(--del-fg)}
+  .nav{display:inline-flex;align-items:center;gap:6px}
+  .nav button{padding:2px 8px;border-radius:6px}
+
+  .doc{
+    background:var(--card);border:1px solid var(--border);border-radius:10px;padding:26px 32px;
+    font-size:16.5px;line-height:1.95;white-space:pre-wrap;overflow-wrap:anywhere;
+  }
+  .split{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media (max-width:860px){ .split{grid-template-columns:1fr} }
+  .split .doc{max-height:66vh;overflow:auto;padding:20px 22px;font-size:15.5px}
+  .split .col-head{font-size:11.5px;color:var(--muted);padding:0 2px 6px;text-transform:uppercase;letter-spacing:.6px}
+
+  del.c-del, .c-del{background:var(--del-bg);color:var(--del-fg);border-radius:3px;padding:0 2px;box-decoration-break:clone;-webkit-box-decoration-break:clone}
+  ins.c-ins, .c-ins{background:var(--ins-bg);color:var(--ins-fg);border-radius:3px;padding:0 2px;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px;box-decoration-break:clone;-webkit-box-decoration-break:clone}
+  .gap{display:inline-block;width:7px}
+  body.strike del.c-del{text-decoration:line-through;text-decoration-thickness:1px}
+  .c-del.focus,.c-ins.focus{outline:2px solid var(--accent);outline-offset:1px}
+
+  .empty{color:var(--muted);text-align:center;padding:56px 20px;font-size:14px;line-height:2}
+  .empty code{background:var(--soft);padding:1px 6px;border-radius:5px;font-size:12.5px}
+  .empty .big{font-size:15px;color:var(--fg);margin-bottom:6px}
+
+  .chg{background:var(--card);border:1px solid var(--border);border-radius:9px;padding:9px 12px;margin-bottom:8px;display:grid;grid-template-columns:30px 1fr auto;gap:10px;align-items:start}
+  .chg .num{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums;padding-top:2px;text-align:right}
+  .chg .body{font-size:14.5px;line-height:1.85;overflow-wrap:anywhere}
+  .chg .ctx{color:var(--muted);font-size:13px}
+  .chg .line{margin-top:2px}
+  .chg .mk{color:var(--muted);font-family:ui-monospace,Consolas,monospace;font-size:12px;margin-right:4px}
+
+  #toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,14px);background:var(--fg);color:var(--bg);padding:8px 16px;border-radius:999px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;z-index:60;max-width:80vw;text-align:center}
+  #toast.show{opacity:1;transform:translate(-50%,0)}
+  footer{color:var(--muted);font-size:12px;padding:26px 2px 10px;display:flex;gap:14px;flex-wrap:wrap;border-top:1px solid var(--border);margin-top:26px}
+  kbd{font-family:ui-monospace,Consolas,monospace;font-size:11px;border:1px solid var(--border);border-bottom-width:2px;border-radius:5px;padding:0 5px;background:var(--card)}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="row1">
+      <span class="brand">Text Diff</span>
+      <span class="tag" data-i18n="tag">长文 / 段落级</span>
+      <span class="grow"></span>
+      <button id="btnSample" class="mini" data-i18n="sample">载入示例</button>
+      <button id="btnSwap" class="mini" data-i18n="swap">交换左右</button>
+      <button id="btnClear" class="mini" data-i18n="clear">清空</button>
+      <button id="btnTheme" class="icon-btn" aria-label="theme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.6v2.2M12 19.2v2.2M2.6 12h2.2M19.2 12h2.2M5.4 5.4l1.6 1.6M17 17l1.6 1.6M18.6 5.4L17 7M7 17l-1.6 1.6"/></svg></button>
+      <button id="btnLang" class="mini" title="Language / 语言">EN</button>
+    </div>
+    <div class="row2">
+      <div class="seg" id="segGran">
+        <button data-g="word" class="on" data-i18n="gWord">词组</button>
+        <button data-g="sentence" data-i18n="gSentence">句子</button>
+        <button data-g="char" data-i18n="gChar">字符</button>
+      </div>
+      <label><input type="checkbox" id="optWs" checked><span data-i18n="optWs">忽略换行与空白</span></label>
+      <label><input type="checkbox" id="optCase"><span data-i18n="optCase">忽略大小写</span></label>
+      <label><input type="checkbox" id="optPunct"><span data-i18n="optPunct">忽略标点</span></label>
+      <label><input type="checkbox" id="optStrike" checked><span data-i18n="optStrike">删除线</span></label>
+      <span class="grow"></span>
+      <div class="seg" id="segView">
+        <button data-v="redline" class="on" data-i18n="vRedline">红线</button>
+        <button data-v="split" data-i18n="vSplit">并排</button>
+        <button data-v="list" data-i18n="vList">改动清单</button>
+      </div>
+      <button id="btnCompare" class="primary"><span data-i18n="compare">比较</span> <kbd style="border-color:transparent;background:transparent;color:inherit;opacity:.75">Ctrl+↵</kbd></button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <section class="editors">
+      <div class="pane" id="paneA">
+        <div class="pane-head">
+          <b data-i18n="original">原文</b>
+          <span class="fname" id="nameA"></span>
+          <span class="grow"></span>
+          <span id="cntA">0</span>
+          <button class="mini" id="btnFileA" data-i18n="loadFile">载入文件</button>
+          <input type="file" id="fileA" hidden accept=".txt,.md,.markdown,.csv,.tsv,.json,.log,.xml,.html,.htm,.yaml,.yml,.docx,text/*">
+        </div>
+        <textarea id="taA" spellcheck="false" data-i18n-ph="phA"></textarea>
+      </div>
+
+      <div class="swap-col">
+        <button id="btnSwapMid" data-i18n-title="swap" title="交换左右">⇄</button>
+      </div>
+
+      <div class="pane" id="paneB">
+        <div class="pane-head">
+          <b data-i18n="revised">新文</b>
+          <span class="fname" id="nameB"></span>
+          <span class="grow"></span>
+          <span id="cntB">0</span>
+          <button class="mini" id="btnFileB" data-i18n="loadFile">载入文件</button>
+          <input type="file" id="fileB" hidden accept=".txt,.md,.markdown,.csv,.tsv,.json,.log,.xml,.html,.htm,.yaml,.yml,.docx,text/*">
+        </div>
+        <textarea id="taB" spellcheck="false" data-i18n-ph="phB"></textarea>
+      </div>
+    </section>
+
+    <section class="stats" id="stats" hidden>
+      <span><span data-i18n="chars">字数</span> <b id="stA">0</b> → <b id="stB">0</b></span>
+      <span class="sep"></span>
+      <span class="add"><span data-i18n="added">新增</span> <b id="stAdd">0</b></span>
+      <span class="rem"><span data-i18n="removed">删除</span> <b id="stDel">0</b></span>
+      <span><span data-i18n="similarity">相似度</span> <b id="stSim">—</b></span>
+      <span id="stDegraded" class="rem" hidden data-i18n="degradedNote">差异过大，已按整块比较</span>
+      <span class="sep"></span>
+      <span class="nav">
+        <button id="btnPrev" data-i18n-title="prevTitle">‹</button>
+        <span id="navInfo"></span>
+        <button id="btnNext" data-i18n-title="nextTitle">›</button>
+      </span>
+      <span class="grow"></span>
+      <button class="mini" id="btnCopy" data-i18n="copyRedline">复制红线</button>
+      <button class="mini" id="btnCopyMd" data-i18n="copyMd">复制 Markdown</button>
+      <button class="mini" id="btnExport" data-i18n="exportDocx">导出 Word 修订稿</button>
+    </section>
+
+    <section id="result">
+      <div class="empty" id="emptyDefault">
+        <div class="big" data-i18n="emptyTitle"></div>
+        <div data-i18n-html="emptySub"></div>
+      </div>
+      <div class="empty" id="emptyIdentical" hidden>
+        <div class="big" data-i18n="identicalTitle"></div>
+        <div data-i18n="identicalSub"></div>
+      </div>
+      <div class="empty" id="emptyHint" hidden>
+        <div class="big" id="emptyHintText"></div>
+      </div>
+      <div id="viewRedline" hidden></div>
+      <div id="viewSplit" hidden></div>
+      <div id="viewList" hidden></div>
+    </section>
+
+    <footer>
+      <span data-i18n="footOffline"></span>
+      <span><kbd>Ctrl</kbd>+<kbd>↵</kbd> <span data-i18n="footCompare"></span></span>
+      <span><kbd>Alt</kbd>+<kbd>←</kbd>/<kbd>→</kbd> <span data-i18n="footNav"></span></span>
+      <span data-i18n="footFiles"></span>
+    </footer>
+  </div>
+</main>
+
+<div id="toast"></div>
+
+<script>/*@@JSDIFF@@*/</script>
+<script>
+(function(){
+  'use strict';
+
+  var $ = function(id){ return document.getElementById(id); };
+  var taA = $('taA'), taB = $('taB');
+
+  var state = { gran:'word', view:'redline', ignWs:true, ignCase:false, ignPunct:false, strike:true,
+                pieces:[], blocks:[], nav:-1, identical:false, degraded:false };
+
+  /* ---------- tiny safe storage (file:// origins can throw) ---------- */
+  var mem = {};
+  var store = {
+    get:function(k){ try { return localStorage.getItem(k); } catch(e){ return mem[k] === undefined ? null : mem[k]; } },
+    set:function(k,v){ try { localStorage.setItem(k,v); } catch(e){ mem[k]=v; } }
+  };
+
+  /* ---------- i18n ---------- */
+  var I18N = {
+    zh: {
+      title:'Text Diff · 长文比对',
+      tag:'长文 / 段落级',
+      sample:'载入示例', swap:'交换左右', clear:'清空',
+      themeAuto:'自动', themeLight:'浅色', themeDark:'深色',
+      themeAutoTo:'跟随系统', themeLightTo:'浅色', themeDarkTo:'深色',
+      gWord:'词组', gSentence:'句子', gChar:'字符',
+      optWs:'忽略换行与空白', optCase:'忽略大小写', optPunct:'忽略标点', optStrike:'删除线',
+      vRedline:'红线', vSplit:'并排', vList:'改动清单',
+      compare:'比较',
+      original:'原文', revised:'新文', loadFile:'载入文件',
+      phA:'把旧版本粘贴到这里，或把 .txt / .md / .docx 文件拖进来',
+      phB:'把新版本粘贴到这里',
+      chars:'字数', added:'新增', removed:'删除', similarity:'相似度',
+      degradedNote:'差异过大，已按整块比较',
+      copyRedline:'复制红线', copyMd:'复制 Markdown',
+      exportDocx:'导出 Word 修订稿',
+      exported:'已导出 {name}',
+      exportEmpty:'还没有可导出的改动', exportFail:'导出失败：{msg}',
+      toDark:'切换到深色', toLight:'切换到浅色',
+      navPos:'第 {i} / {n} 处', navAll:'共 {n} 处改动', navNone:'无改动',
+      prevTitle:'上一处 (Alt+←)', nextTitle:'下一处 (Alt+→)',
+      emptyTitle:'把两段文本分别粘到上面，改动会实时算出来',
+      emptySub:'按段落连续排布，不切行；中文按字、英文按词对齐<br>也可以点右上角的 <code>载入示例</code> 先看看效果',
+      identicalTitle:'两边完全一致，没有发现任何差异',
+      identicalSub:'如果是同一份文件的不同排版，试试关掉「忽略换行与空白」',
+      hintLong:'文本较长，按「比较」或 Ctrl+Enter 开始计算',
+      unitChars:'{n} 字',
+      copied:'已复制', copiedRedline:'已复制红线文本', copiedMd:'已复制 Markdown',
+      nothingToCopy:'还没有可复制的结果', copyFailed:'复制失败，请手动选择',
+      sampleLoaded:'已载入示例文本', swapped:'已交换左右两栏',
+      loadFailed:'计算失败：{msg}',
+      slow:'计算完成，用时 {ms} ms',
+      themeNow:'主题：{v}',
+      loading:'正在读取 {name}…', loaded:'已载入 {name}',
+      readFailed:'读取失败，可能不是纯文本文件',
+      tooBig:'文件太大（>8MB）',
+      pdfNo:'PDF 暂不支持：请复制正文，或用 Word/Adobe 的比较功能',
+      docNo:'旧版 .doc 不支持：请用 Word 另存为 .docx',
+      notDocx:'这不是有效的 .docx 文件',
+      noDocument:'docx 里找不到正文（word/document.xml）',
+      noInflate:'这个浏览器不支持解压 docx，请用新版 Chrome / Edge',
+      docxEmpty:'这个 docx 没有可读的正文',
+      go:'定位', wsOnly:'（空白变化）',
+      noChanges:'两侧完全一致，没有改动。',
+      footOffline:'离线运行 · 文件只在本机，不联网',
+      footCompare:'比较',
+      footNav:'上/下一处',
+      footFiles:'支持粘贴，或 .txt .md .csv .json .docx 文件',
+      langBtn:'EN'
+    },
+    en: {
+      title:'Text Diff — compare two texts',
+      tag:'prose / paragraph level',
+      sample:'Load sample', swap:'Swap sides', clear:'Clear',
+      themeAuto:'Auto', themeLight:'Light', themeDark:'Dark',
+      themeAutoTo:'following system', themeLightTo:'light', themeDarkTo:'dark',
+      gWord:'Words', gSentence:'Sentences', gChar:'Characters',
+      optWs:'Ignore line breaks', optCase:'Ignore case', optPunct:'Ignore punctuation', optStrike:'Strikethrough',
+      vRedline:'Redline', vSplit:'Side by side', vList:'Change list',
+      compare:'Compare',
+      original:'Original', revised:'Revised', loadFile:'Load file',
+      phA:'Paste the old version here, or drop a .txt / .md / .docx file',
+      phB:'Paste the new version here',
+      chars:'Length', added:'Added', removed:'Removed', similarity:'Similarity',
+      degradedNote:'Too different — compared as whole blocks',
+      copyRedline:'Copy redline', copyMd:'Copy Markdown',
+      exportDocx:'Export .docx',
+      exported:'Saved {name}',
+      exportEmpty:'Nothing to export yet', exportFail:'Export failed: {msg}',
+      toDark:'Switch to dark', toLight:'Switch to light',
+      navPos:'{i} / {n} changes', navAll:'{n} changes', navNone:'no changes',
+      prevTitle:'Previous change (Alt+←)', nextTitle:'Next change (Alt+→)',
+      emptyTitle:'Paste both versions above — changes are computed as you type',
+      emptySub:'Text stays in paragraph flow, never cut into lines. Chinese compares per character, English per word.<br>Or hit <code>Load sample</code> in the top right to see it working.',
+      identicalTitle:'The two sides are identical — no differences found',
+      identicalSub:'If this is the same file re-wrapped, try turning off “Ignore line breaks & spacing”.',
+      hintLong:'Long text: press “Compare” or Ctrl+Enter to compute',
+      unitChars:'{n} chars',
+      copied:'Copied', copiedRedline:'Redline copied', copiedMd:'Markdown copied',
+      nothingToCopy:'Nothing to copy yet', copyFailed:'Copy failed — select the text manually',
+      sampleLoaded:'Sample loaded', swapped:'Sides swapped',
+      loadFailed:'Diff failed: {msg}',
+      slow:'Computed in {ms} ms',
+      themeNow:'Theme: {v}',
+      loading:'Reading {name}…', loaded:'Loaded {name}',
+      readFailed:'Could not read it — is it really plain text?',
+      tooBig:'File too large (>8 MB)',
+      pdfNo:'PDF is not supported — copy the text, or compare with Word/Adobe',
+      docNo:'Legacy .doc is not supported — save as .docx in Word',
+      notDocx:'That is not a valid .docx file',
+      noDocument:'No document body found inside this .docx',
+      noInflate:'This browser cannot unzip .docx — use a recent Chrome or Edge',
+      docxEmpty:'This .docx has no readable text',
+      go:'Go', wsOnly:'(whitespace only)',
+      noChanges:'No changes — the two sides are identical.',
+      footOffline:'Runs offline — files never leave this machine',
+      footCompare:'compare',
+      footNav:'prev/next change',
+      footFiles:'Paste, or load .txt .md .csv .json .docx',
+      langBtn:'中文'
+    }
+  };
+
+  var lang = 'zh';
+  function t(key, vars){
+    var table = I18N[lang] || I18N.zh;
+    var s = table[key] !== undefined ? table[key] : (I18N.zh[key] !== undefined ? I18N.zh[key] : key);
+    if (vars) Object.keys(vars).forEach(function(k){ s = s.split('{' + k + '}').join(vars[k]); });
+    return s;
+  }
+
+  function applyLang(next){
+    lang = (next === 'en' || next === 'zh') ? next : 'zh';
+    store.set('td.lang', lang);
+    document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+    document.title = t('title');
+    Array.prototype.forEach.call(document.querySelectorAll('[data-i18n]'), function(el){
+      el.textContent = t(el.dataset.i18n);
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-i18n-html]'), function(el){
+      el.innerHTML = t(el.dataset.i18nHtml);
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-i18n-ph]'), function(el){
+      el.placeholder = t(el.dataset.i18nPh);
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-i18n-title]'), function(el){
+      el.title = t(el.dataset.i18nTitle);
+    });
+    $('btnLang').textContent = t('langBtn');
+    $('btnLang').title = lang === 'zh' ? 'Switch to English' : '切换到中文';
+    updateCounts();
+    resolveTheme();
+    updateNav();
+    if (state.pieces.length) renderResult();
+    else showEmptyState();
+  }
+
+  function toggleLang(){ applyLang(lang === 'zh' ? 'en' : 'zh'); }
+
+  /* ---------- helpers ---------- */
+  var ESC = {'&':'&amp;','<':'&lt;','>':'&gt;'};
+  function esc(s){ return String(s).replace(/[&<>]/g, function(c){ return ESC[c]; }); }
+  function normText(s){ return String(s).replace(/\r\n?/g,'\n'); }
+  function countChars(s){ return s.replace(/\s+/g,'').length; }
+
+  var toastTimer;
+  function toast(msg){
+    var el = $('toast');
+    el.textContent = msg; el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ el.classList.remove('show'); }, 2100);
+  }
+
+  /* ---------- tokenizing: CJK-aware ---------- */
+  var CJK = /^[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]$/;
+  var TOKEN_RE = /(\s+)|([A-Za-z0-9]+(?:['\u2019\-][A-Za-z0-9]+)*)|([\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af])|([\s\S])/g;
+
+  function keyOf(type, text, o){
+    if (type === 's') return o.ignWs ? 's|' : 's|' + text;
+    if (type === 'w') return 'w|' + (o.ignCase ? text.toLowerCase() : text);
+    if (type === 'c') return 'c|' + text;
+    return 'p|' + text;
+  }
+
+  /* With "ignore punctuation" on, punctuation is folded into the *next* token's text
+     (or the last token's tail). It then takes no part in the comparison, but the
+     rendered text still matches the source character for character. */
+  function tokenizeWords(text, o){
+    var out = [], m, buf = '';
+    TOKEN_RE.lastIndex = 0;
+    while ((m = TOKEN_RE.exec(text)) !== null){
+      var type = m[1] !== undefined ? 's' : m[2] !== undefined ? 'w' : m[3] !== undefined ? 'c' : 'p';
+      var tok = m[0];
+      if (type === 'p' && o.ignPunct){ buf += tok; continue; }
+      out.push({ text: buf + tok, key: keyOf(type, tok, o) });
+      buf = '';
+    }
+    if (buf){
+      if (out.length) out[out.length - 1].text += buf;
+      else out.push({ text: buf, key: 'p|' + buf });
+    }
+    return out;
+  }
+
+  function tokenizeChars(text, o){
+    var out = [], chars = Array.from(text), buf = '';
+    for (var i = 0; i < chars.length; i++){
+      var ch = chars[i], type;
+      if (/\s/.test(ch)) type = 's';
+      else if (/[A-Za-z0-9]/.test(ch)) type = 'w';
+      else if (CJK.test(ch)) type = 'c';
+      else type = 'p';
+      if (type === 'p' && o.ignPunct){ buf += ch; continue; }
+      out.push({ text: buf + ch, key: keyOf(type, ch, o) });
+      buf = '';
+    }
+    if (buf){
+      if (out.length) out[out.length - 1].text += buf;
+      else out.push({ text: buf, key: 'p|' + buf });
+    }
+    return out;
+  }
+
+  var SENT_TERM = /[。！？!?；;\n]/;
+  function splitSentences(text){
+    var out = [], buf = '';
+    for (var i = 0; i < text.length; i++){
+      buf += text[i];
+      if (SENT_TERM.test(text[i])){ out.push(buf); buf = ''; }
+    }
+    if (buf) out.push(buf);
+    return out;
+  }
+
+  function sentenceKey(s, o){
+    var k = s;
+    if (o.ignWs) k = k.replace(/\s+/g, ' ');
+    if (o.ignPunct) k = k.replace(/[\s。！？!?；;，,、：:"“”'‘’()（）\[\]【】…—\-·]/g, '');
+    if (o.ignCase) k = k.toLowerCase();
+    return 'S|' + k.trim();
+  }
+
+  /* ---------- diff ---------- */
+  /* multiset overlap of two key arrays: 2*common/(na+nb); 1 = identical token bags */
+  function similarityEstimate(ka, kb){
+    var m = new Map(), i, v, c = 0;
+    for (i = 0; i < ka.length; i++) m.set(ka[i], (m.get(ka[i]) || 0) + 1);
+    for (i = 0; i < kb.length; i++){
+      v = m.get(kb[i]);
+      if (v){ m.set(kb[i], v - 1); c++; }
+    }
+    var total = ka.length + kb.length;
+    return total ? (2 * c) / total : 1;
+  }
+
+  function joinTokens(arr){
+    var s = '';
+    for (var i = 0; i < arr.length; i++) s += arr[i].text;
+    return s;
+  }
+
+  /* Myers is O(N*D): a 10k-char document compared against an unrelated one can hang.
+     So: trim the common head/tail (cheap, always safe), diff only the middle, and if the
+     middle is still too expensive, degrade to "whole block replaced" instead of freezing. */
+  function diffProse(a, b, o){
+    var ta, tb;
+    if (o.gran === 'sentence'){
+      ta = splitSentences(a).map(function(s){ return { text:s, key:sentenceKey(s, o) }; });
+      tb = splitSentences(b).map(function(s){ return { text:s, key:sentenceKey(s, o) }; });
+    } else if (o.gran === 'char'){
+      ta = tokenizeChars(a, o); tb = tokenizeChars(b, o);
+    } else {
+      ta = tokenizeWords(a, o); tb = tokenizeWords(b, o);
+    }
+
+    var ka = ta.map(function(x){ return x.key; }), kb = tb.map(function(x){ return x.key; });
+    var p = 0, ea = ka.length, eb = kb.length;
+    while (p < ea && p < eb && ka[p] === kb[p]) p++;
+    var s = 0;
+    while (s < ea - p && s < eb - p && ka[ea - 1 - s] === kb[eb - 1 - s]) s++;
+
+    var midA = ta.slice(p, ea - s), midB = tb.slice(p, eb - s);
+    var pieces = [];
+    if (p) pieces.push({ t:'eq', a:joinTokens(ta.slice(0, p)), b:joinTokens(tb.slice(0, p)) });
+
+    state.degraded = false;
+    var parts = [];
+    if (midA.length || midB.length){
+      var total = midA.length + midB.length;
+      /* Cheap O(n) pre-check: if the two middles share almost no tokens at all
+         (wrong file pasted, two different documents), Myers would grind for seconds
+         and its output would be meaningless anyway. */
+      if (total > 2000 && similarityEstimate(ka.slice(p, ea - s), kb.slice(p, eb - s)) < 0.4){
+        state.degraded = true;
+        parts = [{ count: midA.length, removed: true }, { count: midB.length, added: true }];
+      } else {
+        parts = Diff.diffArrays(
+          midA.map(function(x){ return x.key; }),
+          midB.map(function(x){ return x.key; }),
+          { timeout: 700, maxEditLength: 12000 }
+        );
+        if (!parts){
+          state.degraded = true;
+          parts = [{ count: midA.length, removed: true }, { count: midB.length, added: true }];
+        }
+      }
+    }
+
+    var ia = 0, ib = 0;
+    for (var i = 0; i < parts.length; i++){
+      var part = parts[i], n = part.count;
+      if (part.added){ pieces.push({ t:'ins', b:joinTokens(midB.slice(ib, ib + n)) }); ib += n; }
+      else if (part.removed){ pieces.push({ t:'del', a:joinTokens(midA.slice(ia, ia + n)) }); ia += n; }
+      else {
+        pieces.push({ t:'eq', a:joinTokens(midA.slice(ia, ia + n)), b:joinTokens(midB.slice(ib, ib + n)) });
+        ia += n; ib += n;
+      }
+    }
+    if (s) pieces.push({ t:'eq', a:joinTokens(ta.slice(ea - s)), b:joinTokens(tb.slice(eb - s)) });
+    return finish(pieces);
+  }
+
+  /* merge neighbours of the same type, drop empties, keep original spacing */
+  function finish(pieces){
+    var out = [], i, p;
+    for (i = 0; i < pieces.length; i++){
+      p = pieces[i];
+      var txt = p.t === 'eq' ? (p.a + p.b) : (p.t === 'del' ? p.a : p.b);
+      if (!txt) continue;
+      var last = out[out.length - 1];
+      if (last && last.t === p.t){
+        if (p.t === 'eq'){ last.a += p.a; last.b += p.b; }
+        else if (p.t === 'del'){ last.a += p.a; }
+        else { last.b += p.b; }
+      } else if (p.t === 'eq'){
+        out.push({ t:'eq', a:p.a, b:p.b });
+      } else if (p.t === 'del'){
+        out.push({ t:'del', a:p.a });
+      } else {
+        out.push({ t:'ins', b:p.b });
+      }
+    }
+    return out;
+  }
+
+  /* ---------- change blocks ---------- */
+  /* A whitespace-only equality does not close a change run: "a cat" -> "a big cat"
+     must count as ONE change, not two separated by the space. */
+  function groupBlocks(pieces){
+    var blocks = [], cur = null;
+    for (var i = 0; i < pieces.length; i++){
+      var p = pieces[i];
+      if (p.t === 'eq'){
+        if (/^\s*$/.test(p.a) || /^\s*$/.test(p.b)) continue;
+        cur = null;
+        continue;
+      }
+      if (!cur){ cur = { ci: blocks.length, del:'', ins:'', from:i }; blocks.push(cur); }
+      p.ci = cur.ci;
+      if (p.t === 'del') cur.del += p.a; else cur.ins += p.b;
+      cur.to = i;
+    }
+    return blocks;
+  }
+
+  /* ---------- rendering ---------- */
+  function redlineHTML(){
+    var h = '', prevChange = false;
+    for (var i = 0; i < state.pieces.length; i++){
+      var p = state.pieces[i];
+      if (p.t === 'eq'){ h += esc(p.a); prevChange = false; continue; }
+      if (prevChange) h += '<span class="gap"></span>';
+      prevChange = true;
+      if (p.t === 'del') h += '<del class="c-del" data-ci="' + p.ci + '">' + esc(p.a) + '</del>';
+      else h += '<ins class="c-ins" data-ci="' + p.ci + '">' + esc(p.b) + '</ins>';
+    }
+    return h;
+  }
+
+  function splitHTML(side){
+    var h = '';
+    for (var i = 0; i < state.pieces.length; i++){
+      var p = state.pieces[i];
+      if (p.t === 'eq') h += esc(side === 'a' ? p.a : p.b);
+      else if (p.t === 'del' && side === 'a') h += '<span class="c-del" data-ci="' + p.ci + '">' + esc(p.a) + '</span>';
+      else if (p.t === 'ins' && side === 'b') h += '<span class="c-ins" data-ci="' + p.ci + '">' + esc(p.b) + '</span>';
+    }
+    return h;
+  }
+
+  function snippet(s, max){
+    max = max || 220;
+    if (s.length <= max) return s;
+    var head = Math.ceil(max * 0.6), tail = max - head;
+    return s.slice(0, head) + ' … ' + s.slice(-tail);
+  }
+
+  function contextBefore(idx, len){
+    for (var i = idx - 1; i >= 0; i--){
+      if (state.pieces[i].t === 'eq' && /\S/.test(state.pieces[i].a)){
+        var s = state.pieces[i].a.replace(/\s+/g,' ').trim();
+        return s.slice(-len);
+      }
+    }
+    return '';
+  }
+  function contextAfter(idx, len){
+    for (var i = idx + 1; i < state.pieces.length; i++){
+      if (state.pieces[i].t === 'eq' && /\S/.test(state.pieces[i].a)){
+        var s = state.pieces[i].a.replace(/\s+/g,' ').trim();
+        return s.slice(0, len);
+      }
+    }
+    return '';
+  }
+
+  function listHTML(){
+    var h = '';
+    state.blocks.forEach(function(b, i){
+      var before = contextBefore(b.from, 16), after = contextAfter(b.to, 16);
+      h += '<div class="chg" data-jump="' + b.ci + '">';
+      h += '<div class="num">' + (i + 1) + '</div><div class="body">';
+      if (before || after) h += '<div class="ctx">…' + esc(before) + '<span style="opacity:.5"> ▌ </span>' + esc(after) + '…</div>';
+      if (b.del) h += '<div class="line"><span class="mk rem">−</span><span class="c-del">' + esc(snippet(b.del)) + '</span></div>';
+      if (b.ins) h += '<div class="line"><span class="mk add">+</span><span class="c-ins">' + esc(snippet(b.ins)) + '</span></div>';
+      if (!b.del && !b.ins) h += '<div class="ctx">' + esc(t('wsOnly')) + '</div>';
+      h += '</div><div><button class="mini">' + esc(t('go')) + '</button></div></div>';
+    });
+    return h || '<div class="empty">' + esc(t('noChanges')) + '</div>';
+  }
+
+  function showEmptyState(){
+    var empty = !state.pieces.length || state.identical;
+    $('emptyDefault').hidden = !(empty && !state.identical);
+    $('emptyIdentical').hidden = !(empty && state.identical);
+    if (empty) $('emptyHint').hidden = true;
+  }
+
+  function renderResult(){
+    var empty = !state.pieces.length || state.identical;
+    ['viewRedline','viewSplit','viewList'].forEach(function(id, i){
+      var v = ['redline','split','list'][i];
+      $(id).hidden = empty || state.view !== v;
+    });
+    showEmptyState();
+    if (empty) return;
+
+    if (state.view === 'redline'){
+      $('viewRedline').innerHTML = '<div class="doc" id="docRedline">' + redlineHTML() + '</div>';
+    } else if (state.view === 'split'){
+      $('viewSplit').innerHTML =
+        '<div class="split">' +
+          '<div><div class="col-head">' + esc(t('original')) + '</div><div class="doc" id="docL">' + splitHTML('a') + '</div></div>' +
+          '<div><div class="col-head">' + esc(t('revised')) + '</div><div class="doc" id="docR">' + splitHTML('b') + '</div></div>' +
+        '</div>';
+      syncScroll();
+    } else {
+      $('viewList').innerHTML = listHTML();
+      Array.prototype.forEach.call($('viewList').querySelectorAll('[data-jump]'), function(row){
+        row.addEventListener('click', function(){
+          switchView('redline');
+          jumpTo(parseInt(row.dataset.jump, 10));
+        });
+      });
+    }
+  }
+
+  function syncScroll(){
+    var L = $('docL'), R = $('docR');
+    if (!L || !R) return;
+    var lock = false;
+    function link(from, to){
+      from.addEventListener('scroll', function(){
+        if (lock) return;
+        lock = true;
+        var dFrom = from.scrollHeight - from.clientHeight;
+        var dTo = to.scrollHeight - to.clientHeight;
+        if (dFrom > 0 && dTo > 0) to.scrollTop = (from.scrollTop / dFrom) * dTo;
+        else to.scrollTop = from.scrollTop;
+        setTimeout(function(){ lock = false; }, 40);
+      });
+    }
+    link(L, R); link(R, L);
+  }
+
+  function renderStats(a, b){
+    var add = 0, del = 0, common = 0;
+    state.pieces.forEach(function(p){
+      if (p.t === 'ins') add += countChars(p.b);
+      else if (p.t === 'del') del += countChars(p.a);
+      else common += countChars(p.a);
+    });
+    var na = countChars(a), nb = countChars(b);
+    var sim = (na + nb) ? Math.round(200 * common / (na + nb)) : 100;
+
+    $('stats').hidden = false;
+    $('stA').textContent = na;
+    $('stB').textContent = nb;
+    $('stAdd').textContent = add;
+    $('stDel').textContent = del;
+    $('stSim').textContent = sim + '%';
+    $('stDegraded').hidden = !state.degraded;
+    state.nav = -1;
+    updateNav();
+  }
+
+  function updateNav(){
+    var n = state.blocks.length;
+    $('navInfo').textContent = !n ? t('navNone')
+      : (state.nav < 0 ? t('navAll', { n: n }) : t('navPos', { i: state.nav + 1, n: n }));
+    $('btnPrev').disabled = !n;
+    $('btnNext').disabled = !n;
+  }
+
+  function jumpTo(ci){
+    var el = document.querySelector('.c-del[data-ci="' + ci + '"], .c-ins[data-ci="' + ci + '"]');
+    if (!el) return;
+    state.nav = ci; updateNav();
+    Array.prototype.forEach.call(document.querySelectorAll('.c-del.focus,.c-ins.focus'), function(x){
+      x.classList.remove('focus');
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-ci="' + ci + '"]'), function(x){
+      x.classList.add('focus');
+    });
+    el.scrollIntoView({ behavior:'smooth', block:'center' });
+  }
+
+  function step(dir){
+    if (!state.blocks.length) return;
+    var n = state.blocks.length;
+    var next = state.nav < 0 ? (dir > 0 ? 0 : n - 1) : state.nav + dir;
+    next = (next + n) % n;
+    jumpTo(next);
+  }
+
+  /* ---------- compute ---------- */
+  var timer = null;
+
+  function opts(){ return { gran:state.gran, ignWs:state.ignWs, ignCase:state.ignCase, ignPunct:state.ignPunct }; }
+
+  function schedule(immediate){
+    clearTimeout(timer);
+    var total = taA.value.length + taB.value.length;
+    if (!immediate && total > 60000){ showHint(t('hintLong')); return; }
+    timer = setTimeout(compute, immediate ? 0 : 320);
+  }
+
+  function showHint(msg){
+    $('emptyDefault').hidden = true;
+    $('emptyIdentical').hidden = true;
+    $('emptyHint').hidden = false;
+    $('emptyHintText').textContent = msg;
+  }
+
+  function compute(){
+    var a = normText(taA.value), b = normText(taB.value);
+    updateCounts();
+    if (!a.trim() && !b.trim()){ resetEmpty(); persist(); return; }
+
+    var t0 = performance.now();
+    try {
+      state.pieces = diffProse(a, b, opts());
+    } catch (err){
+      console.error(err);
+      toast(t('loadFailed', { msg: err.message }));
+      return;
+    }
+    state.blocks = groupBlocks(state.pieces);
+    state.identical = state.pieces.every(function(p){ return p.t === 'eq'; });
+    renderStats(a, b);
+    renderResult();
+    persist();
+
+    var ms = performance.now() - t0;
+    if (ms > 900) toast(t('slow', { ms: Math.round(ms) }));
+  }
+
+  function resetEmpty(){
+    state.pieces = []; state.blocks = []; state.nav = -1; state.identical = false;
+    $('stats').hidden = true;
+    $('emptyHint').hidden = true;
+    showEmptyState();
+    ['viewRedline','viewSplit','viewList'].forEach(function(id){ $(id).hidden = true; });
+  }
+
+  function updateCounts(){
+    $('cntA').textContent = t('unitChars', { n: countChars(normText(taA.value)) });
+    $('cntB').textContent = t('unitChars', { n: countChars(normText(taB.value)) });
+  }
+
+  function switchView(v){
+    state.view = v;
+    Array.prototype.forEach.call($('segView').children, function(b){ b.classList.toggle('on', b.dataset.v === v); });
+    renderResult();
+    persist();
+  }
+
+  /* ---------- clipboard ---------- */
+  function copyText(text, label){
+    var done = function(){ toast(label || t('copied')); };
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(done, fallback);
+    } else fallback();
+
+    function fallback(){
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed'; ta.style.top = '-1000px';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); done(); } catch(e){ toast(t('copyFailed')); }
+      document.body.removeChild(ta);
+    }
+  }
+
+  function redlineText(){
+    return state.pieces.map(function(p){
+      if (p.t === 'eq') return p.a;
+      if (p.t === 'del') return '[-' + p.a + '-]';
+      return '{+' + p.b + '+}';
+    }).join('');
+  }
+
+  function markdownText(){
+    return state.pieces.map(function(p){
+      if (p.t === 'eq') return p.a;
+      if (p.t === 'del') return '~~' + p.a + '~~';
+      return '==' + p.b + '==';
+    }).join('');
+  }
+
+  /* ---------- persistence ---------- */
+  var saveTimer;
+  function persist(){
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(function(){
+      store.set('td.a', taA.value);
+      store.set('td.b', taB.value);
+      store.set('td.opts', JSON.stringify({
+        gran:state.gran, view:state.view, ignWs:state.ignWs,
+        ignCase:state.ignCase, ignPunct:state.ignPunct, strike:state.strike
+      }));
+    }, 600);
+  }
+
+  /* ---------- theme: sun / moon icon; first run follows the system ---------- */
+  var mq = window.matchMedia('(prefers-color-scheme: dark)');
+  var SUN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.6v2.2M12 19.2v2.2M2.6 12h2.2M19.2 12h2.2M5.4 5.4l1.6 1.6M17 17l1.6 1.6M18.6 5.4L17 7M7 17l-1.6 1.6"/></svg>';
+  var MOON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.4 14.3A8.6 8.6 0 0 1 9.7 3.6a8.6 8.6 0 1 0 10.7 10.7z"/></svg>';
+
+  function themePref(){ return store.get('td.theme') || 'auto'; }
+
+  function isDark(){
+    var pref = themePref();
+    return pref === 'dark' || (pref === 'auto' && mq.matches);
+  }
+
+  function resolveTheme(){
+    var dark = isDark();
+    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    var btn = $('btnTheme');
+    if (btn){
+      btn.innerHTML = dark ? MOON : SUN;
+      btn.title = dark ? t('toLight') : t('toDark');
+      btn.setAttribute('aria-label', btn.title);
+    }
+  }
+
+  function toggleTheme(){
+    var next = isDark() ? 'light' : 'dark';
+    store.set('td.theme', next);
+    resolveTheme();
+    toast(t('themeNow', { v: t(next === 'dark' ? 'themeDarkTo' : 'themeLightTo') }));
+  }
+
+  if (mq.addEventListener) mq.addEventListener('change', function(){ if (themePref() === 'auto') resolveTheme(); });
+
+  /* ---------- docx ---------- */
+  /* .docx is a ZIP: find word/document.xml through the central directory, inflate it
+     with the browser's own DecompressionStream, then read paragraphs out of the XML. */
+  function zipFind(buf, name){
+    var dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+    var eocd = -1;
+    for (var i = buf.length - 22; i >= Math.max(0, buf.length - 66000); i--){
+      if (buf[i] === 0x50 && buf[i+1] === 0x4b && buf[i+2] === 0x05 && buf[i+3] === 0x06){ eocd = i; break; }
+    }
+    if (eocd < 0) return null;
+    var count = dv.getUint16(eocd + 10, true);
+    var p = dv.getUint32(eocd + 16, true);
+    var dec = new TextDecoder();
+    for (var k = 0; k < count; k++){
+      if (dv.getUint32(p, true) !== 0x02014b50) break;
+      var method = dv.getUint16(p + 10, true);
+      var compSize = dv.getUint32(p + 20, true);
+      var nameLen = dv.getUint16(p + 28, true);
+      var extraLen = dv.getUint16(p + 30, true);
+      var commentLen = dv.getUint16(p + 32, true);
+      var localOffset = dv.getUint32(p + 42, true);
+      var entryName = dec.decode(buf.subarray(p + 46, p + 46 + nameLen));
+      if (entryName === name) return { method: method, compSize: compSize, localOffset: localOffset };
+      p += 46 + nameLen + extraLen + commentLen;
+    }
+    return null;
+  }
+
+  async function zipRead(buf, entry){
+    var dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+    var nameLen = dv.getUint16(entry.localOffset + 26, true);
+    var extraLen = dv.getUint16(entry.localOffset + 28, true);
+    var start = entry.localOffset + 30 + nameLen + extraLen;
+    var raw = buf.subarray(start, start + entry.compSize);
+    if (entry.method === 0) return raw;
+    if (entry.method !== 8) throw new Error('zip method ' + entry.method);
+    if (typeof DecompressionStream === 'undefined') throw new Error(t('noInflate'));
+    var stream = new Blob([raw]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  }
+
+  function paragraphText(p){
+    var s = '';
+    (function walk(node){
+      for (var i = 0; i < node.childNodes.length; i++){
+        var c = node.childNodes[i];
+        if (c.nodeType !== 1) continue;
+        var ln = c.localName;
+        if (ln === 't') s += c.textContent;
+        else if (ln === 'tab') s += '\t';
+        else if (ln === 'br' || ln === 'cr') s += '\n';
+        else if (ln === 'del' || ln === 'moveFrom') continue;   /* tracked deletions are not text */
+        else walk(c);
+      }
+    })(p);
+    return s;
+  }
+
+  /* one table row -> "cell1\tcell2\tcell3", so rows diff against rows */
+  function rowText(tr){
+    var cells = [];
+    for (var i = 0; i < tr.children.length; i++){
+      var tc = tr.children[i];
+      if (tc.localName !== 'tc') continue;
+      var paras = [];
+      walkBlocks(tc, paras);
+      cells.push(paras.join(' ').replace(/\s+/g, ' ').trim());
+    }
+    return cells.join('\t');
+  }
+
+  function walkBlocks(node, out){
+    var kids = node.children;
+    for (var i = 0; i < kids.length; i++){
+      var el = kids[i], ln = el.localName;
+      if (ln === 'p') out.push(paragraphText(el));
+      else if (ln === 'tr') out.push(rowText(el));
+      else if (ln === 'tbl' || ln === 'tc' || ln === 'sdt' || ln === 'sdtContent' || ln === 'body') walkBlocks(el, out);
+    }
+  }
+
+  function docxToText(xml){
+    var doc = new DOMParser().parseFromString(xml, 'application/xml');
+    if (doc.getElementsByTagName('parsererror').length) throw new Error(t('notDocx'));
+    var body = null, all = doc.getElementsByTagName('*');
+    for (var i = 0; i < all.length; i++){
+      if (all[i].localName === 'body'){ body = all[i]; break; }
+    }
+    if (!body) throw new Error(t('noDocument'));
+    var paras = [];
+    walkBlocks(body, paras);
+    var text = paras.join('\n').replace(/[ \t]+$/gm, '');
+    return text.replace(/^\n+/, '').replace(/\n+$/, '');
+  }
+
+  async function extractDocx(file){
+    var buf = new Uint8Array(await file.arrayBuffer());
+    if (!(buf[0] === 0x50 && buf[1] === 0x4b)) throw new Error(t('notDocx'));
+    var entry = zipFind(buf, 'word/document.xml');
+    if (!entry) throw new Error(t('noDocument'));
+    var bytes = await zipRead(buf, entry);
+    var text = docxToText(new TextDecoder('utf-8').decode(bytes));
+    if (!text.trim()) throw new Error(t('docxEmpty'));
+    return text;
+  }
+
+  /* ---------- docx export: a .docx Word opens as real tracked changes ----------
+     A .docx only needs three parts: [Content_Types].xml, _rels/.rels and
+     word/document.xml. Everything is written uncompressed ("stored"), so no deflate
+     is needed on the way out. */
+  var AUTHOR = 'Text Diff';
+  var CRC_TABLE = (function(){
+    var t = new Uint32Array(256);
+    for (var i = 0; i < 256; i++){
+      var c = i;
+      for (var k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      t[i] = c >>> 0;
+    }
+    return t;
+  })();
+
+  function crc32(bytes){
+    var c = 0xFFFFFFFF;
+    for (var i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+    return (c ^ 0xFFFFFFFF) >>> 0;
+  }
+
+  function zipStore(files){
+    var enc = new TextEncoder();
+    var now = new Date();
+    var dosTime = ((now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1)) & 0xFFFF;
+    var dosDate = (((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate()) & 0xFFFF;
+    var local = [], central = [], offset = 0;
+
+    files.forEach(function(f){
+      var name = enc.encode(f.name), data = f.data, crc = crc32(data);
+
+      var lh = new Uint8Array(30 + name.length), lv = new DataView(lh.buffer);
+      lv.setUint32(0, 0x04034b50, true);
+      lv.setUint16(4, 20, true);
+      lv.setUint16(6, 0x0800, true);           /* UTF-8 file names */
+      lv.setUint16(8, 0, true);                /* stored */
+      lv.setUint16(10, dosTime, true);
+      lv.setUint16(12, dosDate, true);
+      lv.setUint32(14, crc, true);
+      lv.setUint32(18, data.length, true);
+      lv.setUint32(22, data.length, true);
+      lv.setUint16(26, name.length, true);
+      lv.setUint16(28, 0, true);
+      lh.set(name, 30);
+      local.push(lh, data);
+
+      var cd = new Uint8Array(46 + name.length), cv = new DataView(cd.buffer);
+      cv.setUint32(0, 0x02014b50, true);
+      cv.setUint16(4, 20, true);
+      cv.setUint16(6, 20, true);
+      cv.setUint16(8, 0x0800, true);
+      cv.setUint16(10, 0, true);
+      cv.setUint16(12, dosTime, true);
+      cv.setUint16(14, dosDate, true);
+      cv.setUint32(16, crc, true);
+      cv.setUint32(20, data.length, true);
+      cv.setUint32(24, data.length, true);
+      cv.setUint16(28, name.length, true);
+      cv.setUint16(30, 0, true);
+      cv.setUint16(32, 0, true);
+      cv.setUint16(34, 0, true);
+      cv.setUint16(36, 0, true);
+      cv.setUint32(38, 0, true);
+      cv.setUint32(42, offset, true);
+      cd.set(name, 46);
+      central.push(cd);
+
+      offset += lh.length + data.length;
+    });
+
+    var cdSize = 0;
+    central.forEach(function(c){ cdSize += c.length; });
+    var eocd = new Uint8Array(22), ev = new DataView(eocd.buffer);
+    ev.setUint32(0, 0x06054b50, true);
+    ev.setUint16(8, files.length, true);
+    ev.setUint16(10, files.length, true);
+    ev.setUint32(12, cdSize, true);
+    ev.setUint32(16, offset, true);
+
+    var out = new Uint8Array(offset + cdSize + 22), pos = 0;
+    local.forEach(function(c){ out.set(c, pos); pos += c.length; });
+    central.forEach(function(c){ out.set(c, pos); pos += c.length; });
+    out.set(eocd, pos);
+    return out;
+  }
+
+  function xmlEsc(s){
+    return String(s)
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  /* runs for one chunk: tabs become <w:tab/>, line breaks become <w:br/> */
+  function chunkXML(type, text){
+    var out = '', lines = String(text).split('\n');
+    for (var li = 0; li < lines.length; li++){
+      if (li > 0) out += '<w:r><w:br/></w:r>';
+      var segs = lines[li].split('\t');
+      for (var si = 0; si < segs.length; si++){
+        if (si > 0) out += '<w:r><w:tab/></w:r>';
+        if (!segs[si]) continue;
+        out += type === 'del'
+          ? '<w:r><w:delText xml:space="preserve">' + xmlEsc(segs[si]) + '</w:delText></w:r>'
+          : '<w:r><w:t xml:space="preserve">' + xmlEsc(segs[si]) + '</w:t></w:r>';
+      }
+    }
+    return out;
+  }
+
+  var PPR = '<w:pPr><w:spacing w:after="160" w:line="300" w:lineRule="auto"/></w:pPr>';
+
+  function paragraphXML(runs, rev){
+    var body = '', i = 0;
+    while (i < runs.length){
+      var type = runs[i].type, buf = '';
+      while (i < runs.length && runs[i].type === type){ buf += runs[i].text; i++; }
+      if (type === 'eq'){
+        body += chunkXML('eq', buf);
+      } else {
+        var attr = ' w:id="' + (rev.id++) + '" w:author="' + xmlEsc(AUTHOR) + '" w:date="' + rev.date + '"';
+        body += type === 'ins'
+          ? '<w:ins' + attr + '>' + chunkXML('ins', buf) + '</w:ins>'
+          : '<w:del' + attr + '>' + chunkXML('del', buf) + '</w:del>';
+      }
+    }
+    return '<w:p>' + PPR + body + '</w:p>';
+  }
+
+  function buildDocx(){
+    var rev = { id: 1, date: new Date().toISOString().replace(/\.\d+Z$/, 'Z') };
+    var paras = [], cur = [];
+    function flush(){ paras.push(cur); cur = []; }
+
+    state.pieces.forEach(function(p){
+      if (p.t === 'del'){
+        /* deletions stay inside the current paragraph, keeping their own line breaks */
+        if (p.a) cur.push({ type:'del', text: p.a });
+        return;
+      }
+      var text = p.t === 'eq' ? p.a : p.b;
+      var parts = String(text).split('\n');
+      for (var i = 0; i < parts.length; i++){
+        if (i > 0) flush();
+        if (parts[i]) cur.push({ type: p.t, text: parts[i] });
+      }
+    });
+    flush();
+    if (paras.length > 1 && paras[paras.length - 1].length === 0) paras.pop();
+
+    var body = '';
+    for (var i = 0; i < paras.length; i++) body += paragraphXML(paras[i], rev);
+
+    var doc = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
+      '<w:body>' + body +
+      '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/>' +
+      '<w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="567" w:footer="567" w:gutter="0"/>' +
+      '</w:sectPr></w:body></w:document>';
+
+    var CT = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+      '<Default Extension="xml" ContentType="application/xml"/>' +
+      '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>' +
+      '</Types>';
+
+    var RELS = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>' +
+      '</Relationships>';
+
+    var enc = new TextEncoder();
+    return zipStore([
+      { name: '[Content_Types].xml', data: enc.encode(CT) },
+      { name: '_rels/.rels', data: enc.encode(RELS) },
+      { name: 'word/document.xml', data: enc.encode(doc) }
+    ]);
+  }
+
+  function downloadBytes(bytes, filename, mime){
+    var blob = new Blob([bytes], { type: mime || 'application/octet-stream' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function(){ URL.revokeObjectURL(url); a.remove(); }, 4000);
+  }
+
+  function exportDocx(){
+    if (!state.pieces.length) return toast(t('exportEmpty'));
+    try {
+      var d = new Date(), pad = function(n){ return (n < 10 ? '0' : '') + n; };
+      var name = 'redline-' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '-' + pad(d.getHours()) + pad(d.getMinutes()) + '.docx';
+      downloadBytes(buildDocx(), name, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+      toast(t('exported', { name: name }));
+    } catch (err){
+      console.error(err);
+      toast(t('exportFail', { msg: err.message }));
+    }
+  }
+
+  $('btnExport').addEventListener('click', exportDocx);
+
+  /* ---------- file loading + drag & drop ---------- */
+  function wireFile(paneId, ta, inputId, btnId, nameId){
+    var input = $(inputId);
+    $(btnId).addEventListener('click', function(){ input.click(); });
+    input.addEventListener('change', function(){
+      var f = input.files && input.files[0];
+      if (!f) return;
+      readInto(f, ta, nameId);
+      input.value = '';
+    });
+
+    var pane = $(paneId);
+    ['dragenter','dragover'].forEach(function(ev){
+      pane.addEventListener(ev, function(e){ e.preventDefault(); pane.classList.add('drag'); });
+    });
+    ['dragleave','drop'].forEach(function(ev){
+      pane.addEventListener(ev, function(e){ e.preventDefault(); pane.classList.remove('drag'); });
+    });
+    pane.addEventListener('drop', function(e){
+      var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (f) readInto(f, ta, nameId);
+    });
+  }
+
+  function readTextFile(file){
+    return new Promise(function(resolve, reject){
+      var r = new FileReader();
+      r.onload = function(){ resolve(String(r.result)); };
+      r.onerror = function(){ reject(new Error(t('readFailed'))); };
+      r.readAsText(file, 'utf-8');
+    });
+  }
+
+  async function readInto(file, ta, nameId){
+    var name = file.name || '';
+    var lower = name.toLowerCase();
+    if (/\.pdf$/i.test(lower)){ toast(t('pdfNo')); return; }
+    if (/\.doc$/i.test(lower)){ toast(t('docNo')); return; }
+    if (file.size > 8 * 1024 * 1024){ toast(t('tooBig')); return; }
+
+    var isDocx = /\.docx$/i.test(lower);
+    if (isDocx) toast(t('loading', { name: name }));
+    try {
+      var text = isDocx ? await extractDocx(file) : await readTextFile(file);
+      ta.value = normText(text);
+      if (nameId) $(nameId).textContent = name;
+      updateCounts();
+      schedule(true);
+      toast(t('loaded', { name: name }));
+    } catch (err){
+      console.error(err);
+      toast(err && err.message ? err.message : t('readFailed'));
+    }
+  }
+
+  wireFile('paneA', taA, 'fileA', 'btnFileA', 'nameA');
+  wireFile('paneB', taB, 'fileB', 'btnFileB', 'nameB');
+
+  /* ---------- sample / swap / clear ---------- */
+  var SAMPLE_A =
+'在项目启动阶段，我们通常会先梳理业务目标，再拆解成可以交付的里程碑。很多团队在这一步会跳过需求澄清，直接把注意力放在排期上，结果是在中期反复返工，进度反而更慢。\n\n' +
+'This document explains how the reference pipeline works. Each stage writes its output to a temporary directory, and the final step publishes the artifacts to the release bucket.\n\n' +
+'评审的时候，最好把「谁在什么时候确认了哪一版」记下来，否则两周之后没人说得清当时的取舍。';
+
+  var SAMPLE_B =
+'在项目启动阶段，我们通常先梳理业务目标，然后再拆解成可交付的里程碑。不少团队会跳过需求澄清这一步，直接把注意力放在排期上，结果中期反复返工，进度反而更慢。\n\n' +
+'This document describes how the reference pipeline works. Every stage writes its results to a temporary folder, and the last step publishes the artifacts to the release bucket.\n\n' +
+'评审时最好记下「谁在什么时候确认了哪一版」，否则两周之后没人说得清当时的取舍。新增一条：变更记录要写清原因。';
+
+  function loadSample(){
+    taA.value = SAMPLE_A; taB.value = SAMPLE_B;
+    $('nameA').textContent = ''; $('nameB').textContent = '';
+    updateCounts(); compute();
+    toast(t('sampleLoaded'));
+  }
+
+  function swap(){
+    var text = taA.value; taA.value = taB.value; taB.value = text;
+    var nm = $('nameA').textContent;
+    $('nameA').textContent = $('nameB').textContent; $('nameB').textContent = nm;
+    compute();
+  }
+
+  function clearAll(){
+    if (!taA.value && !taB.value) return;
+    taA.value = ''; taB.value = '';
+    $('nameA').textContent = ''; $('nameB').textContent = '';
+    resetEmpty(); updateCounts(); persist();
+    taA.focus();
+  }
+
+  /* ---------- wiring ---------- */
+  Array.prototype.forEach.call($('segGran').children, function(btn){
+    btn.addEventListener('click', function(){
+      state.gran = btn.dataset.g;
+      Array.prototype.forEach.call($('segGran').children, function(b){ b.classList.toggle('on', b === btn); });
+      schedule(true);
+    });
+  });
+
+  Array.prototype.forEach.call($('segView').children, function(btn){
+    btn.addEventListener('click', function(){ switchView(btn.dataset.v); });
+  });
+
+  $('optWs').addEventListener('change', function(){ state.ignWs = this.checked; schedule(true); });
+  $('optCase').addEventListener('change', function(){ state.ignCase = this.checked; schedule(true); });
+  $('optPunct').addEventListener('change', function(){ state.ignPunct = this.checked; schedule(true); });
+  $('optStrike').addEventListener('change', function(){
+    state.strike = this.checked;
+    document.body.classList.toggle('strike', state.strike);
+    persist();
+  });
+
+  taA.addEventListener('input', function(){ updateCounts(); schedule(false); });
+  taB.addEventListener('input', function(){ updateCounts(); schedule(false); });
+
+  $('btnCompare').addEventListener('click', function(){ schedule(true); });
+  $('btnSample').addEventListener('click', loadSample);
+  $('btnSwap').addEventListener('click', function(){ swap(); toast(t('swapped')); });
+  $('btnSwapMid').addEventListener('click', function(){ swap(); toast(t('swapped')); });
+  $('btnClear').addEventListener('click', clearAll);
+  $('btnTheme').addEventListener('click', toggleTheme);
+  $('btnLang').addEventListener('click', toggleLang);
+  $('btnPrev').addEventListener('click', function(){ step(-1); });
+  $('btnNext').addEventListener('click', function(){ step(1); });
+  $('btnCopy').addEventListener('click', function(){
+    if (!state.pieces.length) return toast(t('nothingToCopy'));
+    copyText(redlineText(), t('copiedRedline'));
+  });
+  $('btnCopyMd').addEventListener('click', function(){
+    if (!state.pieces.length) return toast(t('nothingToCopy'));
+    copyText(markdownText(), t('copiedMd'));
+  });
+
+  document.addEventListener('keydown', function(e){
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter'){ e.preventDefault(); schedule(true); }
+    else if (e.altKey && e.key === 'ArrowLeft'){ e.preventDefault(); step(-1); }
+    else if (e.altKey && e.key === 'ArrowRight'){ e.preventDefault(); step(1); }
+  });
+
+  /* ---------- restore ---------- */
+  (function init(){
+    var savedLang = store.get('td.lang');
+    if (!savedLang) savedLang = (navigator.language || 'zh').toLowerCase().indexOf('zh') === 0 ? 'zh' : 'en';
+    resolveTheme();
+
+    var saved = store.get('td.opts');
+    if (saved){
+      try {
+        var o = JSON.parse(saved);
+        if (o.gran) state.gran = o.gran;
+        if (o.view) state.view = o.view;
+        state.ignWs = o.ignWs !== false;
+        state.ignCase = !!o.ignCase;
+        state.ignPunct = !!o.ignPunct;
+        state.strike = o.strike !== false;
+      } catch(e){}
+    }
+    $('optWs').checked = state.ignWs;
+    $('optCase').checked = state.ignCase;
+    $('optPunct').checked = state.ignPunct;
+    $('optStrike').checked = state.strike;
+    document.body.classList.toggle('strike', state.strike);
+
+    Array.prototype.forEach.call($('segGran').children, function(b){ b.classList.toggle('on', b.dataset.g === state.gran); });
+    Array.prototype.forEach.call($('segView').children, function(b){ b.classList.toggle('on', b.dataset.v === state.view); });
+
+    var a = store.get('td.a'), b = store.get('td.b');
+    if (a) taA.value = a;
+    if (b) taB.value = b;
+
+    applyLang(savedLang);
+
+    if ((taA.value || '').trim() || (taB.value || '').trim()) compute();
+    else resetEmpty();
+  })();
+
+  /* test hook (harmless in normal use) */
+  window.__td = {
+    state:state,
+    compute:compute,
+    diffProse:diffProse,
+    tokenizeWords:tokenizeWords,
+    setTexts:function(a,b){ taA.value=a; taB.value=b; compute(); },
+    setOpts:function(o){ Object.keys(o).forEach(function(k){ state[k]=o[k]; }); },
+    switchView:switchView,
+    applyLang:function(l){ applyLang(l); },
+    getLang:function(){ return lang; },
+    extractDocx:extractDocx,
+    docxToText:docxToText,
+    buildDocx:buildDocx,
+    exportDocx:exportDocx,
+    toggleTheme:toggleTheme,
+    themePref:themePref
+  };
+})();
+</script>
+</body>
+</html>
